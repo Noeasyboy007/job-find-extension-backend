@@ -113,3 +113,28 @@ export async function renderForgotPasswordEmailHtml(params: {
 `.trim();
   }
 }
+
+export async function renderWelcomeEmailHtml(params: { firstName: string }): Promise<string> {
+  const { firstName } = params;
+
+  const templatePath = path.join(
+    process.cwd(),
+    'src',
+    'common',
+    'email-templetes',
+    'welcome.html',
+  );
+
+  try {
+    const template = await fs.readFile(templatePath, 'utf8');
+    return applyTemplate(template, { firstName });
+  } catch {
+    return `
+<!doctype html>
+<html><body>
+  <p>Hi ${firstName},</p>
+  <p>Welcome to HireReach. Your email is verified and your account is now active.</p>
+</body></html>
+`.trim();
+  }
+}

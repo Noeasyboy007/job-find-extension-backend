@@ -14,6 +14,7 @@ import { HttpException } from '@nestjs/common';
 import {
     sendMail,
     renderForgotPasswordEmailHtml,
+    renderWelcomeEmailHtml,
     renderVerifyUserEmailHtml,
 } from 'src/common/helpers/nodemailer.helper';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -364,6 +365,22 @@ export class AuthService {
 
         user.is_verified = true;
         await user.save();
+
+        // Send a welcome email; do not block verification if the email fails.
+        try {
+            const welcomeHtml = await renderWelcomeEmailHtml({
+                firstName: user.first_name,
+            });
+
+            await sendMail({
+                config: this.mailConfig,
+                to: user.email,
+                subject: 'Welcome to HireReach',
+                html: welcomeHtml,
+            });
+        } catch {
+            // Intentionally ignore welcome email failures.
+        }
 
         return {
             user: publicUser(user),
