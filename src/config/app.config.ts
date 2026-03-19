@@ -1,5 +1,13 @@
 import { registerAs } from '@nestjs/config';
 
+function asBoolean(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined || value === null) return defaultValue;
+  const normalized = value.trim().replace(/^["']|["']$/g, '').toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  return defaultValue;
+}
+
 export default registerAs('app', () => {
 
   return {
@@ -21,7 +29,7 @@ export default registerAs('app', () => {
     mail: {
       host: process.env.MAIL_HOST || 'smtp.gmail.com',
       port: Number(process.env.MAIL_PORT) || 587,
-      secure: process.env.MAIL_SECURE === 'true',
+      secure: asBoolean(process.env.MAIL_SECURE, false),
       user: process.env.MAIL_USER || '',
       pass: process.env.MAIL_PASS || '',
       from: process.env.MAIL_FROM || process.env.MAIL_USER || '',

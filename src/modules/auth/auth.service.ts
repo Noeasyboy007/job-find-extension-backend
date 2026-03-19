@@ -1,9 +1,15 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+    BadRequestException,
+    ConflictException,
+    Injectable,
+    Logger,
+    UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { UserService } from '../users/user.service';
 import { InjectModel } from '@nestjs/sequelize';
-import { RefreshToken } from './models/refresh-token.entity';
+import { RefreshToken } from '../models/refresh-token.entity';
+import { User } from '../models/user.entity';
 import type { SignUpDto } from './dto/signup.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -14,12 +20,18 @@ import { HttpException } from '@nestjs/common';
 import {
     sendMail,
     renderForgotPasswordEmailHtml,
+    renderPasswordChangedEmailHtml,
+    renderPasswordResetSuccessEmailHtml,
     renderWelcomeEmailHtml,
     renderVerifyUserEmailHtml,
 } from 'src/common/helpers/nodemailer.helper';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { ResendVerificationDto } from './dto/resend-verification.dto';
+import type { ChangePasswordDto } from './dto/change-password.dto';
+import type { UpdateUserDto } from './dto/update-user.dto';
+import { USER_ROLES } from 'src/common/constant/user.constant';
+import type { UserRole } from 'src/common/constant/user.constant';
 
 type JwtAccessPayload = {
     sub: number;
@@ -40,9 +52,17 @@ function publicUser(user: any) {
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+    private readonly forgotPasswordRate = new Map<string, number[]>();
+    private readonly resetPasswordRate = new Map<string, number[]>();
+    private readonly rateLimitMinGapMs = 3 * 60 * 1000; // 3 minutes
+    private readonly rateLimitDailyWindowMs = 24 * 60 * 60 * 1000; // 24 hours
+    private readonly rateLimitDailyMax = 5;
+
     constructor(
         private readonly configService: ConfigService,
-        private readonly userService: UserService,
+        @InjectModel(User)
+        private readonly userModel: typeof User,
         @InjectModel(RefreshToken)
         private readonly refreshTokenModel: typeof RefreshToken,
     ) { }
@@ -142,6 +162,38 @@ export class AuthService {
         return { host, port, secure: Boolean(secure), user, pass, from };
     }
 
+    private enforceRateLimit(
+        bucket: Map<string, number[]>,
+        key: string,
+        actionName: string,
+    ) {
+        const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
+        if (!isProduction) return;
+
+        const now = Date.now();
+        const windowStart = now - this.rateLimitDailyWindowMs;
+        const attempts = (bucket.get(key) || []).filter((ts) => ts >= windowStart);
+
+        const lastAttempt = attempts.length ? attempts[attempts.length - 1] : undefined;
+        if (lastAttempt && now - lastAttempt < this.rateLimitMinGapMs) {
+            const secondsLeft = Math.ceil((this.rateLimitMinGapMs - (now - lastAttempt)) / 1000);
+            throw new HttpException(
+                `${actionName} rate limited. Please wait ${secondsLeft}s before trying again.`,
+                429,
+            );
+        }
+
+        if (attempts.length >= this.rateLimitDailyMax) {
+            throw new HttpException(
+                `${actionName} daily limit exceeded. Maximum ${this.rateLimitDailyMax} requests per 24 hours.`,
+                429,
+            );
+        }
+
+        attempts.push(now);
+        bucket.set(key, attempts);
+    }
+
     private hashRefreshToken(refreshToken: string): string {
         // Store only a hash of refresh tokens.
         return createHash('sha256').update(refreshToken).digest('hex');
@@ -192,12 +244,26 @@ export class AuthService {
     }
 
     async signup(dto: SignUpDto) {
-        // Delegate user creation & password hashing to your existing UserService.
-        // (UserService has uniqueness checks on email.)
-        const user = await this.userService.create(dto as any);
+        const existingUser = await this.userModel.findOne({
+            where: { email: dto.email },
+        });
+        if (existingUser) {
+            throw new ConflictException('Email already exists');
+        }
 
-        // In case someone signs up twice quickly and userService returns the same user,
-        // we still ensure refresh tokens are clean.
+        const password_hash = await hashPassword(dto.password);
+        const user = await this.userModel.create({
+            first_name: dto.first_name,
+            last_name: dto.last_name || null,
+            email: dto.email,
+            country_code: dto.country_code || null,
+            phone_number: dto.phone_number || null,
+            password_hash,
+            is_active: dto.is_active ?? true,
+            is_verified: false,
+            user_role: (dto.user_role || USER_ROLES[1]) as UserRole,
+        } as any);
+
         const { secret, expiresInSeconds } = this.emailVerificationConfig;
         const verificationToken = signJwt(
             { type: 'email_verification', sub: user.id, email: user.email },
@@ -212,22 +278,51 @@ export class AuthService {
             firstName: user.first_name,
             verificationLink,
         });
+        const isDevelopment = this.configService.get<string>('app.nodeEnv') === 'development';
 
-        await sendMail({
-            config: this.mailConfig,
-            to: user.email,
-            subject: 'Verify your email address',
-            html,
-        });
+        try {
+            await sendMail({
+                config: this.mailConfig,
+                to: user.email,
+                subject: 'Verify your email address',
+                html,
+            });
 
-        return {
-            user: publicUser(user),
-            message: 'Verification email sent. Please verify to activate your account.',
-        };
+            return {
+                user: publicUser(user),
+                message: 'Verification email sent. Please verify to activate your account.',
+                ...(isDevelopment
+                    ? {
+                        verificationToken,
+                        verificationLink,
+                    }
+                    : {}),
+            };
+        } catch (error: any) {
+            const mailErrorMessage = error?.message || 'Unknown mail error';
+            this.logger.error(
+                `Signup email send failed for ${user.email}: ${mailErrorMessage}`,
+            );
+
+            // User is already created; avoid returning a signup failure due to SMTP issues.
+            return {
+                user: publicUser(user),
+                message:
+                    'Signup completed, but verification email could not be sent right now. Please try resend verification.',
+                ...(isDevelopment
+                    ? {
+                        verificationToken,
+                        verificationLink,
+                    }
+                    : {}),
+            };
+        }
     }
 
     async login(dto: LoginDto) {
-        const user = await this.userService.findByEmail(dto.email);
+        const user = await this.userModel.findOne({
+            where: { email: dto.email },
+        });
         if (!user || !user.password_hash) {
             throw new UnauthorizedException('Invalid credentials');
         }
@@ -283,7 +378,7 @@ export class AuthService {
         record.revoked_at = new Date();
         await record.save();
 
-        const user = await this.userService.findById(userId);
+        const user = await this.userModel.findByPk(userId);
         if (!user) throw new UnauthorizedException('User not found');
         if (!user.is_verified) {
             throw new UnauthorizedException('Please verify your email address before continuing');
@@ -329,7 +424,7 @@ export class AuthService {
         }
 
         const userId = payload.sub;
-        const user = await this.userService.findById(userId);
+        const user = await this.userModel.findByPk(userId);
         if (!user) throw new UnauthorizedException('User not found');
         if (!user.is_verified) {
             throw new UnauthorizedException('Please verify your email address before using this');
@@ -353,7 +448,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid verification token payload');
         }
 
-        const user = await this.userService.findById(payload.sub);
+        const user = await this.userModel.findByPk(payload.sub);
         if (!user) throw new UnauthorizedException('User not found');
 
         if (user.is_verified) {
@@ -390,13 +485,17 @@ export class AuthService {
 
     async resendVerification(dto: ResendVerificationDto) {
         const email = dto.email;
-        const user = await this.userService.findByEmail(email);
+        const user = await this.userModel.findOne({ where: { email } });
+        const isDevelopment = this.configService.get<string>('app.nodeEnv') === 'development';
 
-        // Prevent user enumeration: always return the same response message.
-        if (!user || user.is_verified) {
+        if (!user) {
             return {
                 message: 'If your account exists, we sent a verification email.',
             };
+        }
+
+        if (user.is_verified) {
+            throw new BadRequestException('Account is already verified');
         }
 
         const { secret, expiresInSeconds } = this.emailVerificationConfig;
@@ -423,12 +522,21 @@ export class AuthService {
 
         return {
             message: 'If your account exists, we sent a verification email.',
+            ...(isDevelopment
+                ? {
+                    verificationToken,
+                    verificationLink,
+                }
+                : {}),
         };
     }
 
     async forgotPassword(dto: ForgotPasswordDto) {
         const email = dto.email;
-        const user = await this.userService.findByEmail(email);
+        const emailKey = email.trim().toLowerCase();
+        this.enforceRateLimit(this.forgotPasswordRate, emailKey, 'Forgot password');
+        const user = await this.userModel.findOne({ where: { email } });
+        const isDevelopment = this.configService.get<string>('app.nodeEnv') === 'development';
 
         if (!user) {
             return {
@@ -437,8 +545,23 @@ export class AuthService {
         }
 
         const { secret, expiresInSeconds } = this.passwordResetConfig;
+        const nextPasswordResetVersion = (user.password_reset_version || 0) + 1;
+        user.password_reset_version = nextPasswordResetVersion;
+        await user.save();
+
+        // Bind token to current password-hash version so the token becomes unusable
+        // immediately after a successful password reset.
+        const passwordVersionHash = createHash('sha256')
+            .update(user.password_hash)
+            .digest('hex');
         const token = signJwt(
-            { type: 'password_reset', sub: user.id, email: user.email },
+            {
+                type: 'password_reset',
+                sub: user.id,
+                email: user.email,
+                pvh: passwordVersionHash,
+                prv: nextPasswordResetVersion,
+            },
             secret,
             expiresInSeconds,
         );
@@ -459,10 +582,20 @@ export class AuthService {
 
         return {
             message: 'If your account exists, we sent a password reset email.',
+            ...(isDevelopment
+                ? {
+                    resetToken: token,
+                    resetLink,
+                }
+                : {}),
         };
     }
 
     async resetPassword(dto: ResetPasswordDto) {
+        if (dto.new_password !== dto.confirm_password) {
+            throw new BadRequestException('New passwords and confirm passwords do not match');
+        }
+
         const token = dto.token;
         if (!token) throw new UnauthorizedException('Reset token missing');
 
@@ -475,19 +608,155 @@ export class AuthService {
             throw new UnauthorizedException('Invalid or expired reset token');
         }
 
-        if (payload?.type !== 'password_reset' || typeof payload?.sub !== 'number') {
+        if (
+            payload?.type !== 'password_reset'
+            || typeof payload?.sub !== 'number'
+            || typeof payload?.pvh !== 'string'
+            || typeof payload?.prv !== 'number'
+        ) {
             throw new UnauthorizedException('Invalid reset token payload');
         }
 
         const userId = payload.sub;
-        const user = await this.userService.findById(userId);
+        const user = await this.userModel.findByPk(userId);
         if (!user) throw new UnauthorizedException('User not found');
+        this.enforceRateLimit(this.resetPasswordRate, String(user.id), 'Reset password');
+
+        const currentPasswordVersionHash = createHash('sha256')
+            .update(user.password_hash)
+            .digest('hex');
+        if (currentPasswordVersionHash !== payload.pvh) {
+            throw new UnauthorizedException(
+                'Reset token is already used or no longer valid',
+            );
+        }
+        if ((user.password_reset_version || 0) !== payload.prv) {
+            throw new UnauthorizedException(
+                'Reset token is no longer latest. Please use the newest reset link.',
+            );
+        }
 
         const password_hash = await hashPassword(dto.new_password);
-        const updated = await this.userService.updatePasswordById(userId, password_hash);
+        user.password_hash = password_hash;
+        user.password_reset_version = (user.password_reset_version || 0) + 1;
+        await user.save();
+
+        // Notify user that password has been reset.
+        // Do not fail the reset flow if mail sending fails.
+        try {
+            const resetSuccessHtml = await renderPasswordResetSuccessEmailHtml({
+                firstName: user.first_name,
+            });
+            await sendMail({
+                config: this.mailConfig,
+                to: user.email,
+                subject: 'Your password was reset',
+                html: resetSuccessHtml,
+            });
+        } catch (error: any) {
+            const mailErrorMessage = error?.message || 'Unknown mail error';
+            this.logger.error(
+                `Password reset email send failed for ${user.email}: ${mailErrorMessage}`,
+            );
+        }
+
         return {
-            user: updated ? publicUser(updated) : publicUser(user),
+            user: publicUser(user),
             message: 'Password reset successfully',
+        };
+    }
+
+    async changePassword(authHeader: string | undefined, dto: ChangePasswordDto) {
+        if (dto.new_password !== dto.confirm_password) {
+            throw new BadRequestException('New passwords and confirm passwords do not match');
+        }
+
+        const accessToken = this.extractBearerToken(authHeader);
+
+        let payload: JwtAccessPayload;
+        try {
+            payload = verifyJwt<JwtAccessPayload>(
+                accessToken,
+                this.jwtConfig.accessSecret,
+            );
+        } catch {
+            throw new UnauthorizedException('Invalid access token');
+        }
+
+        const userId = payload.sub;
+        const user = await this.userModel.findByPk(userId);
+        if (!user) throw new UnauthorizedException('User not found');
+
+        const oldPasswordOk = await comparePassword(dto.old_password, user.password_hash);
+        if (!oldPasswordOk) {
+            throw new UnauthorizedException('Current password is incorrect');
+        }
+
+        const sameAsOld = await comparePassword(dto.new_password, user.password_hash);
+        if (sameAsOld) {
+            throw new BadRequestException('New password must be different from current password');
+        }
+
+        const password_hash = await hashPassword(dto.new_password);
+        user.password_hash = password_hash;
+        user.password_reset_version = (user.password_reset_version || 0) + 1;
+        await user.save();
+
+        // Revoke active refresh tokens so all sessions must log in again.
+        await this.rotateRefreshTokensForUser(user.id);
+
+        // Notify user about password change. Do not fail password change flow
+        // if email sending has transient SMTP issues.
+        try {
+            const changedHtml = await renderPasswordChangedEmailHtml({
+                firstName: user.first_name,
+            });
+            await sendMail({
+                config: this.mailConfig,
+                to: user.email,
+                subject: 'Your password was changed',
+                html: changedHtml,
+            });
+        } catch (error: any) {
+            const mailErrorMessage = error?.message || 'Unknown mail error';
+            this.logger.error(
+                `Password changed email send failed for ${user.email}: ${mailErrorMessage}`,
+            );
+        }
+
+        return {
+            user: publicUser(user),
+            message: 'Password changed successfully',
+        };
+    }
+
+    async updateProfile(authHeader: string | undefined, dto: UpdateUserDto) {
+        const accessToken = this.extractBearerToken(authHeader);
+
+        let payload: JwtAccessPayload;
+        try {
+            payload = verifyJwt<JwtAccessPayload>(
+                accessToken,
+                this.jwtConfig.accessSecret,
+            );
+        } catch {
+            throw new UnauthorizedException('Invalid access token');
+        }
+
+        const userId = payload.sub;
+        const user = await this.userModel.findByPk(userId);
+        if (!user) throw new UnauthorizedException('User not found');
+
+        if (dto.first_name !== undefined) user.first_name = dto.first_name;
+        if (dto.last_name !== undefined) user.last_name = dto.last_name;
+        if (dto.country_code !== undefined) user.country_code = dto.country_code;
+        if (dto.phone_number !== undefined) user.phone_number = dto.phone_number;
+
+        await user.save();
+
+        return {
+            user: publicUser(user),
+            message: 'Profile updated successfully',
         };
     }
 }

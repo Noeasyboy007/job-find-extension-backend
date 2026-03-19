@@ -24,6 +24,10 @@ export class SignUpDto {
 
   @IsOptional()
   @IsString()
+  country_code?: string;
+
+  @IsOptional()
+  @IsString()
   @Length(7, 20)
   phone_number?: string;
 

@@ -1,9 +1,9 @@
 import { IsString, Length } from 'class-validator';
 
-export class ResetPasswordDto {
+export class ChangePasswordDto {
   @IsString()
-  @Length(20, 2000)
-  token: string;
+  @Length(6, 255)
+  old_password: string;
 
   @IsString()
   @Length(6, 255)

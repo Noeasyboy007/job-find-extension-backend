@@ -3,6 +3,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatabaseService } from './database.service';
 import appConfig from 'src/config/app.config';
+import { DatabaseController } from './database.controller';
 
 @Module({
     imports: [
@@ -39,6 +40,7 @@ import appConfig from 'src/config/app.config';
             },
         }),
     ],
+    controllers: [DatabaseController],
     providers: [DatabaseService],
     exports: [SequelizeModule],
 })

@@ -26,6 +26,9 @@ export class User extends Model<User> {
   @Column({ type: DataType.STRING(150), allowNull: false, unique: true })
   declare email: string;
 
+  @Column({ type: DataType.STRING(100), allowNull: true })
+  declare country_code: string | null;
+
   @Column({ type: DataType.STRING(20), allowNull: true })
   declare phone_number: string | null;
 
@@ -39,6 +42,10 @@ export class User extends Model<User> {
   @Default(false)
   @Column({ field: 'is_verified', type: DataType.BOOLEAN, allowNull: false })
   declare is_verified: boolean;
+
+  @Default(0)
+  @Column({ field: 'password_reset_version', type: DataType.INTEGER, allowNull: false })
+  declare password_reset_version: number;
 
   @Default('user')
   @Column({ type: DataType.ENUM(...USER_ROLES), allowNull: false })

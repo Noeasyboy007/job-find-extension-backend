@@ -2,13 +2,12 @@ import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { RefreshToken } from './models/refresh-token.entity';
-import { UserModule } from '../users/user.module';
+import { RefreshToken } from '../models/refresh-token.entity';
+import { User } from '../models/user.entity';
 
 @Module({
   imports: [
-    UserModule,
-    SequelizeModule.forFeature([RefreshToken]),
+    SequelizeModule.forFeature([RefreshToken, User]),
   ],
   controllers: [AuthController],
   providers: [AuthService],

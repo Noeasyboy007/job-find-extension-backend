@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  Patch,
   Post,
   Query,
   Res,
@@ -19,7 +20,9 @@ import { SignUpDto } from './dto/signup.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthService } from './auth.service';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -140,7 +143,7 @@ export class AuthController {
     }
   }
 
-  @Get('verify')
+  @Post('verify')
   @HttpCode(HttpStatus.OK)
   async verify(
     @Query('token') token: string,
@@ -220,6 +223,54 @@ export class AuthController {
       new ResponseBuilder<typeof result>()
         .setStatus(HttpStatus.OK)
         .setMessage('Password reset successfully')
+        .setData(result)
+        .build(res);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        const response = error.getResponse();
+        res.status(error.getStatus()).json(response);
+      } else {
+        new ResponseBuilder<any>().setError(error).build(res);
+      }
+    }
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @Headers('authorization') authorization: string,
+    @Body() dto: ChangePasswordDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const result = await this.authService.changePassword(authorization, dto);
+      new ResponseBuilder<typeof result>()
+        .setStatus(HttpStatus.OK)
+        .setMessage('Password changed successfully')
+        .setData(result)
+        .build(res);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        const response = error.getResponse();
+        res.status(error.getStatus()).json(response);
+      } else {
+        new ResponseBuilder<any>().setError(error).build(res);
+      }
+    }
+  }
+
+  @Patch('profile')
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @Headers('authorization') authorization: string,
+    @Body() dto: UpdateUserDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const result = await this.authService.updateProfile(authorization, dto);
+      new ResponseBuilder<typeof result>()
+        .setStatus(HttpStatus.OK)
+        .setMessage('Profile updated successfully')
         .setData(result)
         .build(res);
     } catch (error) {
