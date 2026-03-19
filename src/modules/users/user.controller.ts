@@ -18,6 +18,12 @@ import { ResponseBuilder } from 'src/common/helpers/response.builder';
 export class UserController {
     constructor(private readonly userService: UserService) { }
 
+    private toPublicUser(user: User) {
+        const plain = user?.get?.({ plain: true }) ?? user;
+        const { password_hash, ...rest } = plain;
+        return rest;
+    }
+
     @Post()
     @HttpCode(HttpStatus.CREATED)
     async create(
@@ -26,10 +32,11 @@ export class UserController {
     ): Promise<void> {
         try {
             const user = await this.userService.create(createUserDto);
-            new ResponseBuilder<User>()
+            const publicUser = this.toPublicUser(user);
+            new ResponseBuilder<any>()
                 .setStatus(HttpStatus.CREATED)
                 .setMessage('User created successfully')
-                .setData(user)
+                .setData(publicUser)
                 .build(res);
         } catch (error) {
             if (error instanceof HttpException) {
@@ -53,10 +60,11 @@ export class UserController {
     async findAll(@Res() res: Response): Promise<void> {
         try {
             const users = await this.userService.findAll();
-            new ResponseBuilder<User[]>()
+            const publicUsers = users.map((u) => this.toPublicUser(u));
+            new ResponseBuilder<any[]>()
                 .setStatus(HttpStatus.OK)
                 .setMessage('Users retrieved successfully')
-                .setData(users)
+                .setData(publicUsers)
                 .build(res);
         } catch (error) {
             if (error instanceof HttpException) {

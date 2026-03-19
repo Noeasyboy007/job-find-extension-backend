@@ -34,13 +34,30 @@ export class UserService {
             phone_number: createUserDto.phone_number || null,
             password_hash: password_hash,
             is_active: createUserDto.is_active ?? true,
+            is_verified: false,
             user_role: (createUserDto.user_role || USER_ROLES[1]) as UserRole, // Default to 'user'
         } as any);
 
         return user;
     }
 
+    async findByEmail(email: string): Promise<User | null> {
+        return this.userModel.findOne({ where: { email } });
+    }
+
+    async findById(id: number): Promise<User | null> {
+        return this.userModel.findByPk(id);
+    }
+
     async findAll(): Promise<User[]> {
         return this.userModel.findAll();
+    }
+
+    async updatePasswordById(userId: number, password_hash: string): Promise<User | null> {
+        const user = await this.userModel.findByPk(userId);
+        if (!user) return null;
+        user.password_hash = password_hash;
+        await user.save();
+        return user;
     }
 }

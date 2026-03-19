@@ -36,6 +36,10 @@ export class User extends Model<User> {
   @Column({ field: 'is_active', type: DataType.BOOLEAN, allowNull: false })
   declare is_active: boolean;
 
+  @Default(false)
+  @Column({ field: 'is_verified', type: DataType.BOOLEAN, allowNull: false })
+  declare is_verified: boolean;
+
   @Default('user')
   @Column({ type: DataType.ENUM(...USER_ROLES), allowNull: false })
   declare user_role: UserRole;
