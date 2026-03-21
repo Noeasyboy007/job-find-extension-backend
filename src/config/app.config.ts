@@ -57,5 +57,14 @@ export default registerAs('app', () => {
       sync: process.env.DB_SYNC === 'true',
       alert: process.env.DB_ALERT === 'true',
     },
+
+    s3: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+      /** Prefer AWS_S3_REGION so the bucket’s real region can differ from other AWS_REGION usage. */
+      region:
+        (process.env.AWS_S3_REGION || process.env.AWS_REGION || 'ap-south-1').trim(),
+      bucket: (process.env.AWS_S3_BUCKET || 'hirereach-resumes').trim(),
+    },
   };
 });

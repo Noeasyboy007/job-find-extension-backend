@@ -7,6 +7,7 @@ import appConfig from './config/app.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/users/user.module';
+import { ResumesModule } from './resumes/resumes.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { UserModule } from './modules/users/user.module';
     DatabaseModule,
     AuthModule,
     UserModule,
+    ResumesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
