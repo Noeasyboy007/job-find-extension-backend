@@ -87,8 +87,8 @@ export class AuthService {
         return {
             accessSecret,
             refreshSecret,
-            accessExpiresInSeconds: Number(accessExpiresInSeconds) || 900,
-            refreshExpiresInSeconds: Number(refreshExpiresInSeconds) || 604800,
+            accessExpiresInSeconds: Number(accessExpiresInSeconds),
+            refreshExpiresInSeconds: Number(refreshExpiresInSeconds),
         };
     }
 
@@ -119,7 +119,7 @@ export class AuthService {
 
         return {
             secret,
-            expiresInSeconds: Number(expiresInSeconds) || 86400,
+            expiresInSeconds: Number(expiresInSeconds),
         };
     }
 
@@ -138,7 +138,7 @@ export class AuthService {
 
         return {
             secret,
-            expiresInSeconds: Number(expiresInSeconds) || 3600,
+            expiresInSeconds: Number(expiresInSeconds),
         };
     }
 

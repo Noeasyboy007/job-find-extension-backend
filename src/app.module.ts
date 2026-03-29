@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { UserModule } from './modules/users/user.module';
 import { ResumesModule } from './resumes/resumes.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ResumesModule } from './resumes/resumes.module';
     AuthModule,
     UserModule,
     ResumesModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
