@@ -17,7 +17,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  @Length(2, 2)
+  @Length(2, 8)
   country_code?: string;
 
   @IsOptional()

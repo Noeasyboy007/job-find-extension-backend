@@ -37,15 +37,15 @@ export default registerAs('app', () => {
     },
 
     emailVerification: {
-      // Where the email link should point. Default points to this backend verify API.
+      // Where the email link should point. Typically a frontend route that calls `POST /auth/verify`.
       urlBase:
-        process.env.EMAIL_VERIFICATION_URL_BASE || 'http://localhost:5050/api/v1/auth/verify',
+        process.env.EMAIL_VERIFICATION_URL_BASE || 'http://localhost:5173/verify-email',
     },
 
     passwordReset: {
       // Where the email link should point. Typically a frontend route that calls `POST /auth/reset-password`.
       urlBase:
-        process.env.PASSWORD_RESET_URL_BASE || 'http://localhost:5050/api/v1/auth/reset-password',
+        process.env.PASSWORD_RESET_URL_BASE || 'http://localhost:5173/reset-password',
     },
 
     db: {

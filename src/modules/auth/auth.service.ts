@@ -144,7 +144,7 @@ export class AuthService {
 
     private get passwordResetUrlBase() {
         return this.configService.get<string>('app.passwordReset.urlBase')
-            || 'http://localhost:5050/api/v1/auth/reset-password';
+            || 'http://localhost:5173/reset-password';
     }
 
     private get mailConfig() {
