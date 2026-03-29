@@ -81,8 +81,13 @@ export default registerAs('app', () => {
     s3: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-      region: (process.env.AWS_S3_REGION || process.env.AWS_REGION || 'ap-south-1').trim(),
+      region: (process.env.AWS_S3_REGION ),
       bucket: (process.env.AWS_S3_BUCKET || 'hirereach-resumes').trim(),
+      /** Presigned GET URL lifetime for resume downloads (seconds). Max ~604800 (7 days). */
+      presignExpiresSeconds: Math.min(
+        Math.max(Number(process.env.AWS_S3_PRESIGN_EXPIRES_SECONDS) || 3600, 60),
+        604800,
+      ),
     },
   };
 });

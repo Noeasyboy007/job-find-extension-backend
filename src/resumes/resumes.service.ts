@@ -23,6 +23,7 @@ import {
   buildS3ObjectPublicUrl,
   createS3Client,
   deleteObjectByKey,
+  getPresignedGetObjectUrl,
   putObjectBuffer,
   type S3BucketConfig,
 } from 'src/common/helpers/s3-bucket.helper';
@@ -34,6 +35,7 @@ export type ResumePublicDto = {
   id: number;
   user_id: number;
   file_name: string;
+  /** Time-limited S3 presigned GET URL (private buckets). Not the same as the canonical URL stored in DB. */
   file_url: string;
   file_type: string;
   file_size: number | null;
@@ -113,6 +115,20 @@ export class ResumesService {
     };
   }
 
+  /** Maps entity → API DTO with a presigned `file_url` so browsers can open private objects. */
+  private async toPublicDto(row: Resume): Promise<ResumePublicDto> {
+    const dto = this.toResponse(row);
+    const cfg = this.getS3Config();
+    const client = createS3Client(cfg);
+    const expiresIn =
+      this.configService.get<number>('app.s3.presignExpiresSeconds') ?? 3600;
+    const signed = await getPresignedGetObjectUrl(client, cfg.bucket, row.file_key, {
+      expiresInSeconds: expiresIn,
+      responseContentType: row.file_type || undefined,
+    });
+    return { ...dto, file_url: signed };
+  }
+
   private async requireUserId(authorization?: string): Promise<number> {
     const me = await this.authService.me(authorization);
     return me.id as number;
@@ -167,7 +183,7 @@ export class ResumesService {
       `Enqueued ${RESUME_PARSING_JOBS.PARSE} job id=${parseJob.id} for resumeId=${row.id} (Redis keys use prefix bull:${QUEUE_NAMES.RESUME_PARSING}:…)`,
     );
 
-    return this.toResponse(row);
+    return this.toPublicDto(row);
   }
 
   async findAll(authorization: string | undefined): Promise<ResumePublicDto[]> {
@@ -176,7 +192,7 @@ export class ResumesService {
       where: { user_id: userId },
       order: [['createdAt', 'DESC']],
     });
-    return rows.map((r) => this.toResponse(r));
+    return Promise.all(rows.map((r) => this.toPublicDto(r)));
   }
 
   async findOne(
@@ -190,7 +206,7 @@ export class ResumesService {
     if (!row) {
       throw new NotFoundException('Resume not found');
     }
-    return this.toResponse(row);
+    return this.toPublicDto(row);
   }
 
   async update(
@@ -209,7 +225,7 @@ export class ResumesService {
     const hasName = dto.file_name !== undefined;
     const hasActive = dto.is_active !== undefined;
     if (!hasName && !hasActive) {
-      return this.toResponse(resume);
+      return this.toPublicDto(resume);
     }
 
     if (dto.file_name !== undefined) {
@@ -233,7 +249,7 @@ export class ResumesService {
       await resume.save({ transaction: t });
     });
 
-    return this.toResponse(await resume.reload());
+    return this.toPublicDto(await resume.reload());
   }
 
   async replaceFile(
@@ -291,7 +307,7 @@ export class ResumesService {
       `Enqueued ${RESUME_PARSING_JOBS.PARSE} job id=${parseJob.id} for resumeId=${resume.id}`,
     );
 
-    return this.toResponse(resume);
+    return this.toPublicDto(resume);
   }
 
   async remove(authorization: string | undefined, id: number): Promise<void> {
