@@ -7,6 +7,7 @@ import { QueuesModule } from 'src/modules/queues/queues.module';
 import { ResumeParsningProcessor } from './processors/resume-parsing.processor';
 import { ResumesController } from './resumes.controller';
 import { ResumesService } from './resumes.service';
+import { ResumeParseAiService } from './services/resume-parse-ai.service';
 
 @Module({
   imports: [
@@ -15,6 +16,6 @@ import { ResumesService } from './resumes.service';
     QueuesModule,
   ],
   controllers: [ResumesController],
-  providers: [ResumesService, ResumeParsningProcessor],
+  providers: [ResumesService, ResumeParseAiService, ResumeParsningProcessor],
 })
 export class ResumesModule {}

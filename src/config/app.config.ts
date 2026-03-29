@@ -1,5 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
+import { resumeParseProviderFromEnv } from 'src/common/constant/resume-parse-ai.constant';
+
 function asBoolean(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === null) return defaultValue;
   const normalized = value.trim().replace(/^["']|["']$/g, '').toLowerCase();
@@ -15,15 +17,14 @@ export default registerAs('app', () => {
     nodeEnv: process.env.NODE_ENV || 'development',
 
     jwt: {
-      // Use strong secrets in production; these defaults are for local dev only.
-      accessSecret: process.env.JWT_ACCESS_SECRET || 'dev_access_secret_change_me',
-      refreshSecret: process.env.JWT_REFRESH_SECRET || 'dev_refresh_secret_change_me',
-      accessExpiresInSeconds: Number(process.env.JWT_ACCESS_EXPIRES_IN_SECONDS) || 900, // 15m
-      refreshExpiresInSeconds: Number(process.env.JWT_REFRESH_EXPIRES_IN_SECONDS) || 604800, // 7d
-      emailVerificationSecret: process.env.JWT_EMAIL_VERIFICATION_SECRET || 'dev_email_verify_secret_change_me',
-      emailVerificationExpiresInSeconds: Number(process.env.JWT_EMAIL_VERIFICATION_EXPIRES_IN_SECONDS) || 86400, // 1d
-      passwordResetSecret: process.env.JWT_PASSWORD_RESET_SECRET || 'dev_password_reset_secret_change_me',
-      passwordResetExpiresInSeconds: Number(process.env.JWT_PASSWORD_RESET_EXPIRES_IN_SECONDS) || 3600, // 1h
+      accessSecret: process.env.JWT_ACCESS_SECRET ,
+      refreshSecret: process.env.JWT_REFRESH_SECRET,
+      accessExpiresInSeconds: Number(process.env.JWT_ACCESS_EXPIRES_IN_SECONDS), 
+      refreshExpiresInSeconds: Number(process.env.JWT_REFRESH_EXPIRES_IN_SECONDS) ,
+      emailVerificationSecret: process.env.JWT_EMAIL_VERIFICATION_SECRET,
+      emailVerificationExpiresInSeconds: Number(process.env.JWT_EMAIL_VERIFICATION_EXPIRES_IN_SECONDS),
+      passwordResetSecret: process.env.JWT_PASSWORD_RESET_SECRET,
+      passwordResetExpiresInSeconds: Number(process.env.JWT_PASSWORD_RESET_EXPIRES_IN_SECONDS),
     },
 
     mail: {
@@ -62,6 +63,19 @@ export default registerAs('app', () => {
       host: (process.env.REDIS_HOST || '127.0.0.1').trim(),
       port: Number(process.env.REDIS_PORT) || 6379,
       password: process.env.REDIS_PASSWORD?.trim() || undefined,
+    },
+
+    ai: {
+      /** 1 = OpenAI, 2 = Gemini — see `resume-parse-ai.constant.ts`. */
+      resumeParseProvider: resumeParseProviderFromEnv(process.env.AI_RESUME_PARSE_PROVIDER),
+      openai: {
+        apiKey: (process.env.OPENAI_API_KEY ?? '').trim(),
+        model: (process.env.OPENAI_MODEL ?? 'gpt-4o-mini').trim(),
+      },
+      gemini: {
+        apiKey: (process.env.GEMINI_API_KEY ?? '').trim(),
+        model: (process.env.GEMINI_MODEL ?? 'gemini-1.5-flash').trim(),
+      },
     },
 
     s3: {

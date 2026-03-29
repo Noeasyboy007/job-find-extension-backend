@@ -6,12 +6,14 @@ import type { Job } from 'bullmq';
 import mammoth from 'mammoth';
 const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = require('pdf-parse');
 
+import { normalizeResumeText } from 'src/common/helpers/resume-text-normalize.helper';
 import {
   createS3Client,
   getObjectBuffer,
   type S3BucketConfig,
 } from 'src/common/helpers/s3-bucket.helper';
 import { Resume } from 'src/modules/models/resume.entity';
+import { ResumeParseAiService } from 'src/resumes/services/resume-parse-ai.service';
 import {
   QUEUE_NAMES,
   RESUME_PARSING_JOBS,
@@ -26,6 +28,7 @@ export class ResumeParsningProcessor extends WorkerHost {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly resumeParseAi: ResumeParseAiService,
     @InjectModel(Resume)
     private readonly resumeModel: typeof Resume,
   ) {
@@ -52,7 +55,11 @@ export class ResumeParsningProcessor extends WorkerHost {
     try {
       const fileBuffer = await this.downloadFromS3(resume.file_key);
       const rawText = await this.extractText(fileBuffer, resume.file_type);
-      const parsedData = this.buildParsedData(rawText);
+      const normalized = normalizeResumeText(rawText);
+      const parsedData = await this.resumeParseAi.parseStructuredResume(
+        normalized,
+        rawText.length,
+      );
 
       await resume.update({
         status: 'parsed',
@@ -61,7 +68,9 @@ export class ResumeParsningProcessor extends WorkerHost {
         error_message: null,
       });
 
-      this.logger.log(`Resume ${resumeId} parsed successfully (${rawText.length} chars)`);
+      this.logger.log(
+        `Resume ${resumeId} parsed successfully (${rawText.length} chars raw, ${normalized.length} normalized)`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Resume ${resumeId} parse failed: ${message}`);
@@ -105,48 +114,6 @@ export class ResumeParsningProcessor extends WorkerHost {
     }
 
     throw new Error(`Unsupported file type for parsing: ${mimeType}`);
-  }
-
-  /**
-   * Lightweight section extraction from plain text.
-   * A dedicated AI parse step (phase 2) will replace this with structured extraction.
-   */
-  private buildParsedData(rawText: string): Record<string, unknown> {
-    const lines = rawText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    const emailMatch = rawText.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
-    const phoneMatch = rawText.match(/[\+\d][\d\s\-().]{7,}/);
-
-    const sectionHeaders = [
-      'experience', 'education', 'skills', 'projects',
-      'certifications', 'summary', 'objective', 'awards',
-    ];
-    const sections: Record<string, string[]> = {};
-    let currentSection = 'header';
-
-    for (const line of lines) {
-      const lower = line.toLowerCase();
-      const matched = sectionHeaders.find((h) => lower.startsWith(h));
-      if (matched) {
-        currentSection = matched;
-        sections[currentSection] = sections[currentSection] ?? [];
-      } else {
-        sections[currentSection] = sections[currentSection] ?? [];
-        sections[currentSection].push(line);
-      }
-    }
-
-    return {
-      email: emailMatch?.[0] ?? null,
-      phone: phoneMatch?.[0]?.trim() ?? null,
-      sections,
-      char_count: rawText.length,
-      line_count: lines.length,
-      parsed_at: new Date().toISOString(),
-    };
   }
 
   @OnWorkerEvent('failed')
