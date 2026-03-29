@@ -7,11 +7,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
 import { InjectConnection, InjectModel } from '@nestjs/sequelize';
+import type { Queue } from 'bullmq';
 import { Sequelize } from 'sequelize';
 
 import { AuthService } from 'src/modules/auth/auth.service';
 import { Resume } from 'src/modules/models/resume.entity';
+import {
+  QUEUE_NAMES,
+  RESUME_PARSING_JOBS,
+} from 'src/common/constant/queues.constants';
 import {
   buildResumeObjectKey,
   buildS3ObjectPublicUrl,
@@ -52,6 +58,8 @@ export class ResumesService {
     private readonly resumeModel: typeof Resume,
     @InjectConnection()
     private readonly sequelize: Sequelize,
+    @InjectQueue(QUEUE_NAMES.RESUME_PARSING)
+    private readonly resumeParsningQueue: Queue,
   ) { }
 
   private getS3Config(): S3BucketConfig {
@@ -152,6 +160,11 @@ export class ResumesService {
         version: 1,
         error_message: null,
       } as never,
+    );
+
+    const parseJob = await this.resumeParsningQueue.add(RESUME_PARSING_JOBS.PARSE, { resumeId: row.id });
+    this.logger.log(
+      `Enqueued ${RESUME_PARSING_JOBS.PARSE} job id=${parseJob.id} for resumeId=${row.id} (Redis keys use prefix bull:${QUEUE_NAMES.RESUME_PARSING}:…)`,
     );
 
     return this.toResponse(row);
@@ -272,6 +285,11 @@ export class ResumesService {
     resume.error_message = null;
     resume.version = resume.version + 1;
     await resume.save();
+
+    const parseJob = await this.resumeParsningQueue.add(RESUME_PARSING_JOBS.PARSE, { resumeId: resume.id });
+    this.logger.log(
+      `Enqueued ${RESUME_PARSING_JOBS.PARSE} job id=${parseJob.id} for resumeId=${resume.id}`,
+    );
 
     return this.toResponse(resume);
   }

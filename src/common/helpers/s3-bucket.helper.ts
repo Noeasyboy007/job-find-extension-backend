@@ -1,9 +1,11 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { Readable } from 'stream';
 
 export type S3BucketConfig = {
   accessKeyId: string;
@@ -56,6 +58,20 @@ export async function putObjectBuffer(
       ContentType: contentType,
     }),
   );
+}
+
+export async function getObjectBuffer(
+  client: S3Client,
+  bucket: string,
+  key: string,
+): Promise<Buffer> {
+  const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const stream = response.Body as Readable;
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+  }
+  return Buffer.concat(chunks);
 }
 
 export async function deleteObjectByKey(

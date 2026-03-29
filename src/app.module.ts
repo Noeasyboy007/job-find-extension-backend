@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import appConfig from './config/app.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { QueuesModule } from './modules/queues/queues.module';
 import { UserModule } from './modules/users/user.module';
 import { ResumesModule } from './resumes/resumes.module';
 
@@ -17,6 +18,7 @@ import { ResumesModule } from './resumes/resumes.module';
       load: [appConfig],
     }),
     DatabaseModule,
+    QueuesModule,
     AuthModule,
     UserModule,
     ResumesModule,
