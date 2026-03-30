@@ -40,6 +40,8 @@ export type JobPublicDto = {
   status: string;
   created_at: Date;
   updated_at: Date;
+  /** True when intake matched an existing job (dedupe) instead of inserting a new row. */
+  already_existed?: boolean;
 };
 
 @Injectable()
@@ -249,7 +251,10 @@ export class JobsService {
         await this.enqueueStructureIfNeeded(existing.id);
       }
 
-      return this.toResponse(await existing.reload());
+      return {
+        ...this.toResponse(await existing.reload()),
+        already_existed: true,
+      };
     }
 
     const row = await this.jobModel.create({
@@ -273,7 +278,7 @@ export class JobsService {
     } as never);
 
     await this.enqueueStructureIfNeeded(row.id);
-    return this.toResponse(row);
+    return { ...this.toResponse(row), already_existed: false };
   }
 
   async findAll(authorization: string | undefined): Promise<JobPublicDto[]> {

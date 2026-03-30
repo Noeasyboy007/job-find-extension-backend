@@ -32,9 +32,14 @@ export class JobsController {
   ): Promise<void> {
     try {
       const data = await this.jobsService.intake(authorization, body);
+      const duplicate = Boolean(data.already_existed);
       new ResponseBuilder<typeof data>()
-        .setStatus(HttpStatus.CREATED)
-        .setMessage('Job captured successfully')
+        .setStatus(duplicate ? HttpStatus.OK : HttpStatus.CREATED)
+        .setMessage(
+          duplicate
+            ? 'This job is already in your dashboard.'
+            : 'Job captured successfully',
+        )
         .setData(data)
         .build(res);
     } catch (error) {
