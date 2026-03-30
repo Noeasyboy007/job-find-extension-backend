@@ -2,6 +2,7 @@ export const JOB_SOURCE_PLATFORM = [
   'linkedin',
   'indeed',
   'glassdoor',
+  'naukri',
   'apna',
   'well_found',
   'career_page',
