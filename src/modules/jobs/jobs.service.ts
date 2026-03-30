@@ -1,12 +1,19 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/sequelize';
+import type { Queue } from 'bullmq';
 
 import { AuthService } from 'src/modules/auth/auth.service';
 import { Job } from 'src/modules/models/job.entity';
 import type { JobStatus } from 'src/common/constant/job.constant';
+import {
+  QUEUE_NAMES,
+  JOB_INTAKE_PROCESSING_JOBS,
+} from 'src/common/constant/queues.constants';
 import type { CreateJobDto } from './dto/create-job.dto';
 import type { UpdateJobStatusDto } from './dto/update-job-status.dto';
 
@@ -27,6 +34,8 @@ export type JobPublicDto = {
   skills: string[];
   raw_payload: Record<string, unknown> | null;
   extracted_metadata: Record<string, unknown> | null;
+  parsed_job: Record<string, unknown> | null;
+  error_message: string | null;
   status: string;
   created_at: Date;
   updated_at: Date;
@@ -34,11 +43,15 @@ export type JobPublicDto = {
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
   constructor(
     private readonly authService: AuthService,
     @InjectModel(Job)
     private readonly jobModel: typeof Job,
-  ) { }
+    @InjectQueue(QUEUE_NAMES.JOB_INTAKE_PROCESSING)
+    private readonly jobIntakeQueue: Queue,
+  ) {}
 
   private toResponse(row: Job): JobPublicDto {
     const plain = row.get({ plain: true }) as unknown as Record<string, unknown>;
@@ -62,6 +75,8 @@ export class JobsService {
       raw_payload: (plain.raw_payload as Record<string, unknown> | null) ?? null,
       extracted_metadata:
         (plain.extracted_metadata as Record<string, unknown> | null) ?? null,
+      parsed_job: (plain.parsed_job as Record<string, unknown> | null) ?? null,
+      error_message: (plain.error_message as string | null) ?? null,
       status: plain.status as string,
       created_at: plain.createdAt as Date,
       updated_at: plain.updatedAt as Date,
@@ -118,7 +133,17 @@ export class JobsService {
         skills: this.normalizeSkills(dto.skills),
         raw_payload: dto.raw_payload ?? null,
         extracted_metadata: dto.extracted_metadata ?? null,
+        parsed_job: null,
+        error_message: null,
       } as never,
+    );
+
+    const structureJob = await this.jobIntakeQueue.add(
+      JOB_INTAKE_PROCESSING_JOBS.STRUCTURE,
+      { jobId: row.id },
+    );
+    this.logger.log(
+      `Enqueued ${JOB_INTAKE_PROCESSING_JOBS.STRUCTURE} job id=${structureJob.id} for jobId=${row.id} (queue ${QUEUE_NAMES.JOB_INTAKE_PROCESSING})`,
     );
 
     return this.toResponse(row);

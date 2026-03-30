@@ -83,6 +83,13 @@ export class Job extends Model<Job> {
   @Column({ field: 'extracted_metadata', type: DataType.JSONB, allowNull: true })
   declare extracted_metadata: Record<string, unknown> | null;
 
+  /** AI-normalized job structure (same role as `resumes.parsed_data`). */
+  @Column({ field: 'parsed_job', type: DataType.JSONB, allowNull: true })
+  declare parsed_job: Record<string, unknown> | null;
+
+  @Column({ field: 'error_message', type: DataType.TEXT, allowNull: true })
+  declare error_message: string | null;
+
   @Default('captured')
   @Column({
     type: DataType.ENUM(...JOB_STATUS),

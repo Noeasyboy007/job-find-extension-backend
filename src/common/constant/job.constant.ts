@@ -12,6 +12,7 @@ export type JobSourcePlatform = (typeof JOB_SOURCE_PLATFORM)[number];
 
 export const JOB_STATUS = [
   'captured',
+  'processing',
   'ready_for_analysis',
   'analyzed',
   'failed',

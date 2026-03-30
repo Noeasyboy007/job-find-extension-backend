@@ -28,6 +28,7 @@ import { QUEUE_NAMES } from '../../common/constant/queues.constants';
     }),
     BullModule.registerQueue(
       { name: QUEUE_NAMES.RESUME_PARSING },
+      { name: QUEUE_NAMES.JOB_INTAKE_PROCESSING },
       { name: QUEUE_NAMES.JOB_ANALYSIS },
       { name: QUEUE_NAMES.OUTREACH_GENERATION },
       { name: QUEUE_NAMES.COMPANY_ENRICHMENT },
