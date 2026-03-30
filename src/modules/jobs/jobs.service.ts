@@ -6,6 +6,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/sequelize';
 import type { Queue } from 'bullmq';
+import { col, fn, Op, where } from 'sequelize';
 
 import { AuthService } from 'src/modules/auth/auth.service';
 import { Job } from 'src/modules/models/job.entity';
@@ -94,6 +95,20 @@ export class JobsService {
     return t.length ? t : null;
   }
 
+  private normalizeRequiredString(value: string): string {
+    return (value ?? '').trim();
+  }
+
+  private async enqueueStructureIfNeeded(jobId: number): Promise<void> {
+    const structureJob = await this.jobIntakeQueue.add(
+      JOB_INTAKE_PROCESSING_JOBS.STRUCTURE,
+      { jobId },
+    );
+    this.logger.log(
+      `Enqueued ${JOB_INTAKE_PROCESSING_JOBS.STRUCTURE} job id=${structureJob.id} for jobId=${jobId} (queue ${QUEUE_NAMES.JOB_INTAKE_PROCESSING})`,
+    );
+  }
+
   private normalizeSkills(value?: string[]): string[] | null {
     if (!value?.length) return null;
     const seen = new Set<string>();
@@ -116,36 +131,148 @@ export class JobsService {
   ): Promise<JobPublicDto> {
     const userId = await this.requireUserId(authorization);
 
-    const row = await this.jobModel.create(
-      {
+    const title = this.normalizeRequiredString(dto.title).slice(0, 500);
+    const company = this.normalizeRequiredString(dto.company_name).slice(0, 500);
+    const sourceUrl = this.normalizeOptionalString(dto.source_url);
+
+    // Best path: if caller provides a job id, update that specific record.
+    if (dto.id) {
+      const existingById = await this.jobModel.findOne({
+        where: { id: dto.id, user_id: userId },
+      });
+      if (existingById) {
+        existingById.title = title;
+        existingById.company_name = company;
+        existingById.location = this.normalizeOptionalString(dto.location);
+        existingById.work_mode = this.normalizeOptionalString(dto.work_mode);
+        existingById.work_time = this.normalizeOptionalString(dto.work_time);
+        existingById.salary = this.normalizeOptionalString(dto.salary);
+        existingById.source_platform = dto.source_platform as never;
+        existingById.source_url = sourceUrl;
+        existingById.description = this.normalizeRequiredString(dto.description).slice(
+          0,
+          500000,
+        );
+        existingById.employment_type = this.normalizeOptionalString(
+          dto.employment_type,
+        );
+        existingById.experience_level = this.normalizeOptionalString(
+          dto.experience_level,
+        );
+        existingById.skills = this.normalizeSkills(dto.skills);
+        existingById.raw_payload = dto.raw_payload ?? null;
+        existingById.extracted_metadata = dto.extracted_metadata ?? null;
+        // keep parsed_job/error_message as-is
+        await existingById.save();
+        return this.toResponse(await existingById.reload());
+      }
+      // If id provided but not found, fall back to de-dupe/create path.
+    }
+
+    // De-dupe: same user + (source_url OR case-insensitive title+company).
+    const dedupeOr: unknown[] = [];
+    if (sourceUrl) {
+      dedupeOr.push({
         user_id: userId,
-        title: dto.title.trim(),
-        company_name: dto.company_name.trim(),
-        location: this.normalizeOptionalString(dto.location),
-        work_mode: this.normalizeOptionalString(dto.work_mode),
-        work_time: this.normalizeOptionalString(dto.work_time),
-        salary: this.normalizeOptionalString(dto.salary),
-        source_platform: dto.source_platform,
-        source_url: this.normalizeOptionalString(dto.source_url),
-        description: dto.description.trim(),
-        employment_type: this.normalizeOptionalString(dto.employment_type),
-        experience_level: this.normalizeOptionalString(dto.experience_level),
-        skills: this.normalizeSkills(dto.skills),
-        raw_payload: dto.raw_payload ?? null,
-        extracted_metadata: dto.extracted_metadata ?? null,
-        parsed_job: null,
-        error_message: null,
-      } as never,
-    );
+        source_url: sourceUrl,
+      });
+    }
+    dedupeOr.push({
+      user_id: userId,
+      [Op.and]: [
+        where(fn('lower', col('title')), title.toLowerCase()),
+        where(fn('lower', col('company_name')), company.toLowerCase()),
+      ],
+    });
 
-    const structureJob = await this.jobIntakeQueue.add(
-      JOB_INTAKE_PROCESSING_JOBS.STRUCTURE,
-      { jobId: row.id },
-    );
-    this.logger.log(
-      `Enqueued ${JOB_INTAKE_PROCESSING_JOBS.STRUCTURE} job id=${structureJob.id} for jobId=${row.id} (queue ${QUEUE_NAMES.JOB_INTAKE_PROCESSING})`,
-    );
+    const existing = await this.jobModel.findOne({
+      // paranoid table => soft-deleted rows won't match
+      where: { [Op.or]: dedupeOr } as never,
+      order: [['createdAt', 'DESC']],
+    });
 
+    if (existing) {
+      // Optionally enrich existing record with any missing info.
+      const nextSalary = this.normalizeOptionalString(dto.salary);
+      const nextLocation = this.normalizeOptionalString(dto.location);
+      const nextWorkMode = this.normalizeOptionalString(dto.work_mode);
+      const nextWorkTime = this.normalizeOptionalString(dto.work_time);
+      const nextEmployment = this.normalizeOptionalString(dto.employment_type);
+      const nextExperience = this.normalizeOptionalString(dto.experience_level);
+      const nextSkills = this.normalizeSkills(dto.skills);
+      const nextDesc = this.normalizeRequiredString(dto.description);
+
+      let changed = false;
+      if (!existing.source_url && sourceUrl) {
+        existing.source_url = sourceUrl;
+        changed = true;
+      }
+      if (!existing.salary && nextSalary) {
+        existing.salary = nextSalary;
+        changed = true;
+      }
+      if (!existing.location && nextLocation) {
+        existing.location = nextLocation;
+        changed = true;
+      }
+      if (!existing.work_mode && nextWorkMode) {
+        existing.work_mode = nextWorkMode;
+        changed = true;
+      }
+      if (!existing.work_time && nextWorkTime) {
+        existing.work_time = nextWorkTime;
+        changed = true;
+      }
+      if (!existing.employment_type && nextEmployment) {
+        existing.employment_type = nextEmployment;
+        changed = true;
+      }
+      if (!existing.experience_level && nextExperience) {
+        existing.experience_level = nextExperience;
+        changed = true;
+      }
+      if ((!existing.skills || !existing.skills.length) && nextSkills?.length) {
+        existing.skills = nextSkills;
+        changed = true;
+      }
+      if (nextDesc.length > (existing.description?.length ?? 0) + 50) {
+        existing.description = nextDesc.slice(0, 500000);
+        changed = true;
+      }
+
+      if (changed) {
+        await existing.save();
+      }
+
+      // If we never structured it, ensure we enqueue once.
+      if (!existing.parsed_job && existing.status !== 'processing') {
+        await this.enqueueStructureIfNeeded(existing.id);
+      }
+
+      return this.toResponse(await existing.reload());
+    }
+
+    const row = await this.jobModel.create({
+      user_id: userId,
+      title,
+      company_name: company,
+      location: this.normalizeOptionalString(dto.location),
+      work_mode: this.normalizeOptionalString(dto.work_mode),
+      work_time: this.normalizeOptionalString(dto.work_time),
+      salary: this.normalizeOptionalString(dto.salary),
+      source_platform: dto.source_platform,
+      source_url: sourceUrl,
+      description: this.normalizeRequiredString(dto.description).slice(0, 500000),
+      employment_type: this.normalizeOptionalString(dto.employment_type),
+      experience_level: this.normalizeOptionalString(dto.experience_level),
+      skills: this.normalizeSkills(dto.skills),
+      raw_payload: dto.raw_payload ?? null,
+      extracted_metadata: dto.extracted_metadata ?? null,
+      parsed_job: null,
+      error_message: null,
+    } as never);
+
+    await this.enqueueStructureIfNeeded(row.id);
     return this.toResponse(row);
   }
 

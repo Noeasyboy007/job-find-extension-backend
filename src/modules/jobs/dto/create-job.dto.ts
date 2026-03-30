@@ -2,9 +2,11 @@ import {
   ArrayMaxSize,
   IsArray,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsObject,
   IsOptional,
+  Min,
   IsString,
   MaxLength,
 } from 'class-validator';
@@ -15,6 +17,11 @@ import {
 } from 'src/common/constant/job.constant';
 
 export class CreateJobDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  id?: number;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(500)
