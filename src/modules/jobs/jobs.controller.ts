@@ -11,11 +11,13 @@ import {
   Post,
   Res,
   Headers,
+  Query,
 } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { ResponseBuilder } from 'src/common/helpers/response.builder';
 import { IntakeJobDto } from './dto/intake-job.dto';
+import { ListJobsQueryDto } from './dto/list-jobs.query.dto';
 import { UpdateJobStatusDto } from './dto/update-job-status.dto';
 import { JobsService } from './jobs.service';
 
@@ -56,10 +58,11 @@ export class JobsController {
   @HttpCode(HttpStatus.OK)
   async findAll(
     @Headers('authorization') authorization: string,
+    @Query() query: ListJobsQueryDto,
     @Res() res: Response,
   ): Promise<void> {
     try {
-      const data = await this.jobsService.findAll(authorization);
+      const data = await this.jobsService.findAll(authorization, query);
       new ResponseBuilder<typeof data>()
         .setStatus(HttpStatus.OK)
         .setMessage('Jobs retrieved successfully')

@@ -16,6 +16,7 @@ import {
   JOB_INTAKE_PROCESSING_JOBS,
 } from 'src/common/constant/queues.constants';
 import type { CreateJobDto } from './dto/create-job.dto';
+import type { ListJobsQueryDto } from './dto/list-jobs.query.dto';
 import type { UpdateJobStatusDto } from './dto/update-job-status.dto';
 
 export type JobPublicDto = {
@@ -125,6 +126,23 @@ export class JobsService {
       out.push(t.slice(0, 150));
     }
     return out.length ? out : null;
+  }
+
+  private hasListQuery(query?: ListJobsQueryDto): boolean {
+    if (!query) return false;
+    return Boolean(
+      query.page ||
+        query.limit ||
+        (typeof query.q === 'string' && query.q.trim()) ||
+        (typeof query.title === 'string' && query.title.trim()) ||
+        (typeof query.company_name === 'string' && query.company_name.trim()) ||
+        (typeof query.source_platform === 'string' && query.source_platform.trim()),
+    );
+  }
+
+  private likeLower(colName: 'title' | 'company_name', term: string) {
+    const t = term.trim().toLowerCase();
+    return where(fn('lower', col(colName)), { [Op.like]: `%${t}%` });
   }
 
   async intake(
@@ -281,13 +299,69 @@ export class JobsService {
     return { ...this.toResponse(row), already_existed: false };
   }
 
-  async findAll(authorization: string | undefined): Promise<JobPublicDto[]> {
+  async findAll(
+    authorization: string | undefined,
+    query?: ListJobsQueryDto,
+  ): Promise<
+    | JobPublicDto[]
+    | {
+        items: JobPublicDto[];
+        page: number;
+        limit: number;
+        total: number;
+        total_pages: number;
+      }
+  > {
     const userId = await this.requireUserId(authorization);
-    const rows = await this.jobModel.findAll({
-      where: { user_id: userId },
+
+    // Backward compatible: if no query params provided, return the original array.
+    if (!this.hasListQuery(query)) {
+      const rows = await this.jobModel.findAll({
+        where: { user_id: userId },
+        order: [['createdAt', 'DESC']],
+      });
+      return rows.map((r) => this.toResponse(r));
+    }
+
+    const page = Math.max(1, Number(query?.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(query?.limit || 20)));
+    const offset = (page - 1) * limit;
+
+    const and: unknown[] = [{ user_id: userId }];
+
+    if (query?.source_platform?.trim()) {
+      and.push({ source_platform: query.source_platform.trim() });
+    }
+    if (query?.title?.trim()) {
+      and.push(this.likeLower('title', query.title));
+    }
+    if (query?.company_name?.trim()) {
+      and.push(this.likeLower('company_name', query.company_name));
+    }
+    if (query?.q?.trim()) {
+      const q = query.q.trim();
+      and.push({
+        [Op.or]: [this.likeLower('title', q), this.likeLower('company_name', q)],
+      });
+    }
+
+    const { count, rows } = await this.jobModel.findAndCountAll({
+      where: { [Op.and]: and } as never,
       order: [['createdAt', 'DESC']],
+      limit,
+      offset,
     });
-    return rows.map((r) => this.toResponse(r));
+
+    const total = count as number;
+    const total_pages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      items: rows.map((r) => this.toResponse(r)),
+      page,
+      limit,
+      total,
+      total_pages,
+    };
   }
 
   async findOne(
