@@ -29,6 +29,10 @@ export const JOB_ANALYSIS_JOBS = {
   ANALYZE: 'analyze',
 } as const;
 
+export type JobAnalysisJobData = {
+  jobId: number;
+};
+
 export const OUTREACH_GENERATION_JOBS = {
   GENERATE: 'generate',
 } as const;
