@@ -8,7 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { UserModule } from './modules/users/user.module';
-import { ResumesModule } from './resumes/resumes.module';
+import { ResumesModule } from './modules/resumes/resumes.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { JobAnalysisModule } from './modules/job-analysis/job-analysis.module';
 import { OutreachModule } from './modules/outreach/outreach.module';

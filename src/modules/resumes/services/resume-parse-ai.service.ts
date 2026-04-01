@@ -5,7 +5,7 @@ import OpenAI from 'openai';
 
 import { RESUME_PARSE_AI_PROVIDER } from 'src/common/constant/resume-parse-ai.constant';
 import { RESUME_PARSE_AI_SYSTEM_PROMPT, buildResumeParseUserMessage } from 'src/common/constant/resume-parse-ai.prompt';
-import { parsedResumeFromAiSchema } from 'src/resumes/schemas/parsed-resume.zod';
+import { parsedResumeFromAiSchema } from 'src/modules/resumes/schemas/parsed-resume.zod';
 
 function stripCodeFences(text: string): string {
   const t = text.trim();

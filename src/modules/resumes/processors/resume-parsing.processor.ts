@@ -13,7 +13,7 @@ import {
   type S3BucketConfig,
 } from 'src/common/helpers/s3-bucket.helper';
 import { Resume } from 'src/modules/models/resume.entity';
-import { ResumeParseAiService } from 'src/resumes/services/resume-parse-ai.service';
+import { ResumeParseAiService } from 'src/modules/resumes/services/resume-parse-ai.service';
 import {
   QUEUE_NAMES,
   RESUME_PARSING_JOBS,
