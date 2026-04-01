@@ -13,6 +13,8 @@ import { JobsModule } from './modules/jobs/jobs.module';
 import { JobAnalysisModule } from './modules/job-analysis/job-analysis.module';
 import { OutreachModule } from './modules/outreach/outreach.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { FormAutofillModule } from './modules/form-autofill/form-autofill.module';
+import { UserApplyProfileModule } from './modules/user-apply-profile/user-apply-profile.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { ContactsModule } from './modules/contacts/contacts.module';
     JobAnalysisModule,
     OutreachModule,
     ContactsModule,
+    FormAutofillModule,
+    UserApplyProfileModule,
   ],
   controllers: [AppController],
   providers: [AppService],
