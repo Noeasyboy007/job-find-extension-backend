@@ -37,6 +37,10 @@ export const OUTREACH_GENERATION_JOBS = {
   GENERATE: 'generate',
 } as const;
 
+export type OutreachGenerationJobData = {
+  outreachId: number;
+};
+
 export const COMPANY_ENRICHMENT_JOBS = {
   ENRICH: 'enrich',
 } as const;

@@ -11,6 +11,8 @@ import { UserModule } from './modules/users/user.module';
 import { ResumesModule } from './resumes/resumes.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { JobAnalysisModule } from './modules/job-analysis/job-analysis.module';
+import { OutreachModule } from './modules/outreach/outreach.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { JobAnalysisModule } from './modules/job-analysis/job-analysis.module';
     ResumesModule,
     JobsModule,
     JobAnalysisModule,
+    OutreachModule,
+    ContactsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
