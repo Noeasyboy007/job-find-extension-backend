@@ -45,6 +45,13 @@ export class JobIntakeProcessingProcessor extends WorkerHost {
       throw new Error(`Job ${jobId} not found — cannot structure`);
     }
 
+    if (row.status === 'ready_for_analysis' && row.parsed_job) {
+      this.logger.log(
+        `Job ${jobId} already structured — skipping duplicate queue job #${job.id}`,
+      );
+      return;
+    }
+
     await row.update({ status: 'processing', error_message: null });
 
     const rawDescription = row.description ?? '';
