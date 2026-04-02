@@ -65,6 +65,17 @@ export default registerAs('app', () => {
       password: process.env.REDIS_PASSWORD?.trim() || undefined,
     },
 
+    /**
+     * After a fresh Redis (clone / new deploy) while Postgres still has rows in
+     * `failed` with no `parsed_job`, set true once so structure jobs are re-enqueued on boot.
+     */
+    jobIntake: {
+      requeueFailedOnBoot: asBoolean(
+        process.env.JOB_INTAKE_REQUEUE_FAILED_ON_BOOT,
+        false,
+      ),
+    },
+
     ai: {
       /** 1 = OpenAI, 2 = Gemini — see `resume-parse-ai.constant.ts`. */
       resumeParseProvider: resumeParseProviderFromEnv(process.env.AI_RESUME_PARSE_PROVIDER),

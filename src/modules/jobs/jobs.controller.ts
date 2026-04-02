@@ -78,6 +78,30 @@ export class JobsController {
     }
   }
 
+  @Post(':id/retry-structure')
+  @HttpCode(HttpStatus.OK)
+  async retryStructure(
+    @Headers('authorization') authorization: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const data = await this.jobsService.retryStructure(authorization, id);
+      new ResponseBuilder<typeof data>()
+        .setStatus(HttpStatus.OK)
+        .setMessage('Job structuring re-queued')
+        .setData(data)
+        .build(res);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        const response = error.getResponse();
+        res.status(error.getStatus()).json(response);
+      } else {
+        new ResponseBuilder<null>().setError(error).build(res);
+      }
+    }
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   async findOne(

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -102,7 +103,7 @@ export class JobsService {
     return (value ?? '').trim();
   }
 
-  private async enqueueStructureIfNeeded(jobId: number): Promise<void> {
+  private async enqueueStructureJob(jobId: number): Promise<void> {
     const structureJob = await this.jobIntakeQueue.add(
       JOB_INTAKE_PROCESSING_JOBS.STRUCTURE,
       { jobId },
@@ -110,6 +111,45 @@ export class JobsService {
     this.logger.log(
       `Enqueued ${JOB_INTAKE_PROCESSING_JOBS.STRUCTURE} job id=${structureJob.id} for jobId=${jobId} (queue ${QUEUE_NAMES.JOB_INTAKE_PROCESSING})`,
     );
+  }
+
+  /**
+   * Re-enqueue AI structuring for jobs stuck in `failed` with no `parsed_job`
+   * (e.g. DB copied from another env but Redis is empty).
+   */
+  async requeueFailedStructureJobsOnBoot(): Promise<number> {
+    const rows = await this.jobModel.findAll({
+      where: { status: 'failed', parsed_job: null },
+    });
+    let n = 0;
+    for (const row of rows) {
+      await row.update({ status: 'captured', error_message: null });
+      await this.enqueueStructureJob(row.id);
+      n += 1;
+    }
+    return n;
+  }
+
+  async retryStructure(
+    authorization: string | undefined,
+    id: number,
+  ): Promise<JobPublicDto> {
+    const userId = await this.requireUserId(authorization);
+    const row = await this.jobModel.findOne({
+      where: { id, user_id: userId },
+    });
+    if (!row) {
+      throw new NotFoundException('Job not found');
+    }
+    if (row.parsed_job) {
+      throw new BadRequestException('Job is already structured.');
+    }
+    if (row.status === 'processing') {
+      throw new BadRequestException('Job structuring is already in progress.');
+    }
+    await row.update({ status: 'captured', error_message: null });
+    await this.enqueueStructureJob(row.id);
+    return this.toResponse(await row.reload());
   }
 
   private normalizeSkills(value?: string[]): string[] | null {
@@ -266,7 +306,7 @@ export class JobsService {
 
       // If we never structured it, ensure we enqueue once.
       if (!existing.parsed_job && existing.status !== 'processing') {
-        await this.enqueueStructureIfNeeded(existing.id);
+        await this.enqueueStructureJob(existing.id);
       }
 
       return {
@@ -295,7 +335,7 @@ export class JobsService {
       error_message: null,
     } as never);
 
-    await this.enqueueStructureIfNeeded(row.id);
+    await this.enqueueStructureJob(row.id);
     return { ...this.toResponse(row), already_existed: false };
   }
 
